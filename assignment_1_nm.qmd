@@ -1,0 +1,221 @@
+---
+title: "assignment_1_nm"
+author: "Marzhan Nuraly"
+---
+
+1.  
+
+    ```{r}
+    Sys.setenv(LANG = "en")
+    #install.packages("ggspatial")
+    ```
+
+```{r}
+# Provides various utility functions for R programming.
+library(R.utils)
+# For data manipulation and transformation.
+library(dplyr)
+# Spatial data
+library(sf)
+# Popular data visualization package in R.  
+library(ggplot2)
+library(ggspatial)
+# For creating thematic maps 
+library(tmap)
+# Color palettes suitable for data visualization, especially for those with color vision deficiencies.
+library(viridis)
+# A collection of color palettes for data visualization.
+library(RColorBrewer)
+# For working with raster data, such as gridded spatial data like satellite imagery or elevation data.
+library(raster)
+# An alternative to the 'raster' package and is used for working with large raster datasets efficiently.
+library(terra)
+# Tools for extracting data from raster layers at exact locations, often used in spatial analysis.
+library(exactextractr)
+# Common methods of the tidyverse packages for objects created with the {terra} package: SpatRaster and SpatVector
+library(tidyterra)
+```
+
+```{r}
+population_china_2010 <- rast("gpw-v4-population-count-rev11_2010_2pt5_min_tif/gpw_v4_population_count_rev11_2010_2pt5_min.tif")
+summary(population_china_2010)
+
+# Create a ggplot visualization
+ggplot(population_china_2010, aes(x = x, y = y, fill = gpw_v4_population_count_rev11_2010_2pt5_min)) +
+  geom_raster() +
+  scale_fill_viridis_c() +
+  labs(title = "Population in China (2010)") +
+  theme_minimal()
+```
+
+```{r}
+
+crs(population_china_2010)
+```
+
+```{r}
+plot(population_china_2010, na.rm = TRUE)
+```
+
+```{r}
+population_china_2020 <- rast("gpw-v4-population-count-rev11_2020_2pt5_min_tif/gpw_v4_population_count_rev11_2020_2pt5_min.tif")
+summary(population_china_2020)
+```
+
+```{r}
+crs(population_china_2020)
+```
+
+We us `$geometry` to plot just the geometry, if we don't include `$geometry` R will plot the first 9 columns and if the dataset is large this is not advisable.
+
+```{r}
+China_adm <- read_sf("gadm36_CHN_shp/gadm36_CHN_2.shp")
+plot(China_adm$geometry, col = "NA", border = 'black', main="Map of China regions")
+```
+
+```{r}
+crs(China_adm)
+```
+
+```{r}
+head(China_adm) # the command "head" reads the first 5 rows of the data
+```
+
+```{r}
+# China_adm$NAME_2 #read the column "NAME_2"
+```
+
+```{r}
+plot(China_adm$geometry, col = "lightgrey", main="Anhui Region")
+
+plot(China_adm[China_adm$NAME_1 == "Anhui", ]$geometry, # select region of Anhui
+     col = "seagreen2", add = T) # add to the existing map
+```
+
+```{r}
+china_extent <- extent(China_adm)
+
+population_china_2010 <- terra::project(population_china_2010, crs(China_adm)) # reporjectig the elevation data to the crs of the Lebanon shapefile
+crs(population_china_2010)
+
+population_china_2010_crop <- crop(population_china_2010, china_extent)
+population_china_mask_2010 <- mask(population_china_2010_crop, China_adm)
+
+plot(population_china_mask_2010, main="2010")
+plot(China_adm$geometry, col="NA", add=T)
+```
+
+```{r}
+population_china_2020_crop <- crop(population_china_2020, china_extent)
+population_china_mask_2020 <- mask(elevation_china_2020, China_adm)
+
+plot(population_china_mask_2020, main="2020")
+plot(China_adm$geometry, col="NA", add=T)
+```
+
+```{r}
+pal = rev(brewer.pal(7,"Blues"))
+plot(population_china_mask_2010, breaks=c(0, 1, 5, 25, 250, 1000, 2000), col=pal)
+plot(China_adm$geometry, col= NA, add=T)
+```
+
+```{r}
+pal = rev(brewer.pal(7,"Greens"))
+plot(population_china_mask_2020, breaks=c(0, 1, 5, 25, 250, 1000, 2000), col=pal)
+plot(China_adm$geometry, col= NA, add=T)
+```
+
+**3. Zonal statistics -- population density** 3.1. Calculate the average population density for each region (regional level 2) of China for the year 2020. *Hint*: You will need to use either the extract()function from the raster package or the exact_extract()function from the package 'exactextractr'. Check the options, for example for extract()the options fun=, na.rm=, sp. 3.2. Map1: Your task is to create a map of population density by region level 2. You should include this map in your assessment submission.
+
+```{r}
+China_reg_bounds <- shapefile("gadm36_CHN_shp/gadm36_CHN_2.shp")
+
+region_areas <- area(China_reg_bounds)
+```
+
+```{r}
+population_in_regions <- extract(population_china_2020_crop, China_adm, na.rm = TRUE)
+```
+
+```{r}
+head(population_in_regions)
+```
+
+```{r}
+total_population <- sapply(population_in_regions, sum, na.rm = TRUE)
+total_population
+```
+
+```{r}
+china_density <- population_in_regions / region_areas
+head(china_density)
+```
+
+```{r}
+# Combine the region names and their respective population densities
+
+region_density <- data.frame(region_name = China_reg_bounds$NAME_1, density = china_density)
+head(region_density)
+```
+
+```{r}
+# Calculate the average population density for each region
+
+average_density <- aggregate(region_density$density, by = list(region_density$region_name), FUN = mean)
+
+head(average_density)
+```
+
+```{r}
+# Plot a bar chart of the average population density
+ggplot(data = average_density, aes(x = Group.1, y = x)) +
+  geom_bar(stat = "identity", fill = "turquoise") +
+  labs(title = "Average Population Density in China for Regions", x = "Region", y = "Average Density") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r}
+# Left join average density with China Regions boundaries to create a Map
+china_boundaries <- left_join(China_adm, average_density, by = c("NAME_1" = "Group.1"))
+```
+
+```{r}
+ggplot(data = china_boundaries) +
+  geom_sf(aes(fill = x)) +
+  scale_fill_viridis_c(option = "viridis") +
+  labs(title = "Average Population Density in China for Regions") +
+  theme_minimal()
+```
+
+**4. Categorical Change in China's population** 4.1. Your task is to create one thematic map of the categorical changes in population in China. You need to compute the difference between the raster population layers and create another raster where each pixel represents the change in the population. *Hint:* The "overlay" function of the raster package allows you to calculate the difference between two rasters. overlay_raster\<-overlay(popraster2010, popraster2020, fun=function(x,y)y-x) 4.2. Visualise your new raster which could be called population_change_2010_2000 or similar. Create a map with 4 discrete categories Decline, Neutral, Growth and High Growth. This will be Map 2. You should include these maps in your assessment submission. Hint: the function summary() can allow you to calculate the summary statistics for your raster; the function reclassify() classify groups of values to other values, e,g. -100 to 0 becomes 1; 0 to 200 becomes 2, etc.
+
+```{r}
+population_change_raster <- population_china_mask_2020 - population_china_mask_2010
+
+pal = rev(brewer.pal(7,"Greens"))
+plot(population_change_raster, breaks=c(0, 1, 5, 25, 250, 1000, 2000), col=pal, main = "Population Change in China 2020 - 2010")
+plot(China_adm$geometry, col= NA, add=T)
+```
+
+```{r}
+region_of_interest <- China_adm[China_adm$NAME_1 == "Beijing", ]
+```
+
+```{r}
+ggplot(region_of_interest) +
+  geom_sf() +
+  labs(title = "Beijing") +
+  theme_minimal()
+```
+
+```{r}
+china_reg_extent <- extent(region_of_interest)
+
+elevation_china_reg_2010 <- crop(elevation_2010, china_reg_extent)
+elevation_china__reg_mask_2010 <- mask(elevation_china_reg_2010, region_of_interest)
+
+pal = rev(brewer.pal(7,"Blues"))
+plot(elevation_china__reg_mask_2010, breaks=c(0, 1, 5, 25, 250, 1000, 2000), col=pal)
+plot(China_adm$geometry, col= NA, add=T)
+```
